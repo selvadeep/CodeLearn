@@ -1,0 +1,145 @@
+############################################################################################################################
+#Purpose of the script -> To Check the VOBs backup from local disk to LUN and if any issue it send the alert email to team #
+############################################################################################################################
+# Importing the SMTP protocl to send the email
+require 'net/smtp'
+##############################################
+# Functionality for getting the Date and time#
+##############################################
+
+time = Time.now - (1 * 60 * 60 * 24)  # One day ago from current day
+#ACG_Procurement_20160831
+
+# Components of a Time
+
+current_date=time.inspect
+
+puts current_date
+
+values = current_date.split(" ")
+
+val=values.first
+
+str2 = val.gsub('-','')
+
+puts str2
+
+###########################################################
+#Getting the log files location and date/time of the file #
+###########################################################
+$file_count=false #Counting the number of log files
+#files = Dir["C:/Sites/CC_Log_Script/clearcaselog/Logs/*.log"]
+ary = ['Y','M']
+ary.each do |drive|
+
+files = Dir["#{drive}:/*_#{str2}.log"]
+files.each do |file_name|
+$file_count=true
+    puts file_name
+	if !File.directory? file_name
+		data = []
+		count=0   
+		$val=0
+		$name=file_name
+File.foreach(file_name) do |line|
+######################################
+#   To find the error in log files   #
+######################################
+		if line.upcase.include? "ERROR"
+		    $val=10 
+		    #puts "Passed"
+		    #puts $val
+		end
+#############################################
+# To find the Failed value in the text file #
+#############################################    
+line.chomp!
+temp_line = line.delete(' ')
+		if temp_line =~ /TotalCopiedSkippedMismatchFAILEDExtras/
+			count=count+1
+		else
+			if ((count > 0) & (count <= 3))
+				count+=1
+				line = line.split('  ')
+				line.delete("")
+				data.push [line[5].strip.to_i]
+			end
+		end
+	end
+data = data.flatten
+puts data
+puts $val
+##########################################################
+# To find the VOB Name where the Error / Failed occured  #
+##########################################################
+path=file_name
+$fname = path.split("/")
+$fname=$fname.last
+$max=data.max
+if $max==nil
+$max=0
+end
+	if $max > 0 ||  $val > 0
+	    $val=0
+		puts "Send Alert!!"
+##############################################################################
+# To Send the email to team if Error / Failed occured in the backup log files# 
+##############################################################################
+message = <<MESSAGE_END
+From: <selvaganapathi.m@hcl.com>
+To: <HCL_AGILENT_SETOOLS_CLSLLS_SUPPORT@hcl.com>
+MIME-Version: 1.0
+Content-type: text/html
+Subject: Attention
+
+<p>Hi Team,</p>
+<p>The VOB backup from localdisk to LUN got failed. Please check the below log files and take the action.
+</p> 
+<p> File Name - #{$fname} </p>
+ <p><b>Regards,</b></p>
+  CC Admin
+
+MESSAGE_END
+			Net::SMTP.start('germany.smtp.agilent.com') do |smtp|
+			  smtp.send_message message,'selvaganapathi.m@hcl.com','vairamuthu-sh@hcl.com'                        #'selvaganapathi.m@hcl.com','HCL_AGILENT_SETOOLS_CLSLLS_SUPPORT@h#cl.com'                       
+			end
+
+	else
+		puts "Do Nothing"
+		puts $val
+	end
+end
+end
+
+puts $file_count
+
+##############################################################################
+# To Send the email to team if the backup log files folder is empty          # 
+##############################################################################
+	if $file_count == false
+		puts "Send Alert!!"
+
+message = <<MESSAGE_END
+From: <selvaganapathi.m@hcl.com>
+To: <HCL_AGILENT_SETOOLS_CLSLLS_SUPPORT@hcl.com>
+MIME-Version: 1.0
+Content-type: text/html
+Subject: Attention!!! - LFSCC01 - VOB Backup logs from localdisk to LUN not found
+
+<p>Hi Team,</p>
+<p>The VOB backup logs from localdisk to LUN folder is empty. Please check and take the action.
+</p> 
+
+ <p><b>Regards,</b></p>
+  CC Admin
+
+MESSAGE_END
+			Net::SMTP.start('germany.smtp.agilent.com') do |smtp|
+			  smtp.send_message message,'selvaganapathi.m@hcl.com','vairamuthu-sh@hcl.com'                        #'selvaganapathi.m@hcl.com','HCL_AGILENT_SETOOLS_CLSLLS_SUPPORT@h#cl.com'                       
+			end
+
+	else
+		puts "Do Nothing"
+		puts $val
+	end
+end
